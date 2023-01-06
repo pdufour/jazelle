@@ -164,6 +164,7 @@ async function runTests() {
   await t(testBazelDummy);
   await t(testBazelBuild);
   await t(testInstallAddUpgradeRemove);
+  await t(testTarSortOrderListsParentDirectoriesFirst);
   await t(testBatchTestGroup);
   await t(testCommand);
   await t(testYarnCommand);
@@ -1481,6 +1482,81 @@ async function testParse() {
 async function testGetPassThroughArgs() {
   const args = getPassThroughArgs(['--cwd', '/foo', '--a', '--b', 'b', 'c']);
   assert.deepEqual(args, ['--a', '--b', 'b', 'c']);
+}
+
+async function testTarSortOrderListsParentDirectoriesFirst() {
+  const cmd = `cp -r ${__dirname}/fixtures/untar-order ${tmp}/tmp/untar-order`;
+  await exec(cmd);
+
+  const workspaceFile = `${tmp}/tmp/untar-order/WORKSPACE`;
+  const workspace = await read(workspaceFile, 'utf8');
+  const replaced = workspace.replace(
+    'path = "../../.."',
+    `path = "${__dirname}/.."`
+  );
+  await write(workspaceFile, replaced, 'utf8');
+
+  const cwd = `${tmp}/tmp/untar-order`;
+  const jazelle = `${__dirname}/../bin/bootstrap.sh`;
+
+  await install({root: cwd, cwd: `${cwd}/b`});
+
+  const startStreamFile = `${tmp}/tmp/untar-order/stdout.txt`;
+  const startStream = createWriteStream(startStreamFile);
+  await new Promise(resolve => startStream.on('open', resolve));
+
+  await exec(`${jazelle} build ... --sandbox_debug`, {cwd: `${cwd}/b`}, [
+    startStream,
+  ]);
+  const out = await read(startStreamFile, 'utf8');
+  assert.equal(out.trim(), 'codegen starting\ncodegen complete\n'.trim());
+
+  // list tar files to see if they are in order
+  const tarFiles = (await exec(`tar -ztf ${cwd}/bazel-bin/b/__jazelle__b.tgz`))
+    .trim()
+    .split('\n');
+
+  assert.deepStrictEqual(tarFiles, [
+    // Note: Tar files will list files twice if you include the same file twice which could
+    // happen in our code if you have different glob patterns that match the same file.
+    // There are no ill-effects of this happening though.
+    'src/__generated__/',
+    'src/__generated__/bar-deps.js',
+    'src/__generated__/data/',
+    'src/__generated__/data/foo/',
+    'src/__generated__/data/foo/basic/',
+    'src/__generated__/data/foo/basic/datatypes.flow.js',
+    'src/__generated__/bar-deps.js',
+    'src/__generated__/data/',
+    'src/__generated__/data/foo/',
+    'src/__generated__/data/foo/basic/',
+    'src/__generated__/data/foo/basic/datatypes.flow.js',
+  ]);
+
+  // remove the generated files since we are testing un-taring from a clean slate and otherwise
+  // the files would already exist since they were generated before
+  await exec(`find . -name "__generated__" -type d -exec rm -rf {} +;`, {
+    cwd: `${cwd}`,
+  });
+
+  // check that the untar command now works
+  const execBinOutStreamFile = `${tmp}/tmp/untar-order/stdout.txt`;
+  const execBinOutStream = createWriteStream(startStreamFile);
+  await new Promise(resolve => execBinOutStream.on('open', resolve));
+
+  const execBinErrStreamFile = `${tmp}/tmp/untar-order/stderr.txt`;
+  const execBinErrStream = createWriteStream(execBinErrStreamFile);
+  await new Promise(resolve => execBinErrStream.on('open', resolve));
+
+  await exec(`./b/b`, {cwd: `${cwd}/bazel-bin/b/b.runfiles/__main__`}, [
+    execBinOutStream,
+    execBinErrStream,
+  ]);
+  const execBinOut = await read(execBinOutStreamFile, 'utf8');
+  const execBinErr = await read(execBinErrStreamFile, 'utf8');
+
+  assert.equal(execBinErr.trim(), '');
+  assert.equal(execBinOut.trim(), 'start');
 }
 
 async function testReportMismatchedTopLevelDeps() {

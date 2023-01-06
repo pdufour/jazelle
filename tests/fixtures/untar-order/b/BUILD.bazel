@@ -1,0 +1,21 @@
+package(default_visibility = ["//visibility:public"])
+
+load("@jazelle//:build-rules.bzl", "web_library", "web_binary", "web_executable", "web_test", "flow_test")
+
+web_library(
+    name = "library",
+    deps = [
+        "//:yarn",
+    ],
+    srcs = glob(["**"], exclude = ["compiled/**"]),
+)
+
+web_binary(
+    name = "b",
+    build = "build",
+    command = "start",
+    deps = [
+        "//b:library",
+    ],
+    dist = ["src/**/__generated__/", "src/__generated__/"],
+)

@@ -60,6 +60,8 @@ async function run() {
       return acc;
     }, []);
 
+    dists.sort();
+
     const dirsString = dists.map(item => `"${item}"`).join(' ');
 
     for (const dist of dists) {
@@ -67,7 +69,10 @@ async function run() {
         exec(`mkdir -p "${dist}"`, {cwd: main});
       }
     }
-    exec(`tar czf "${out}" ${dirsString}`, {cwd: main, stdio: 'inherit'});
+    exec(`tar czf "${out}" --sort=name ${dirsString}`, {
+      cwd: main,
+      stdio: 'inherit',
+    });
   } else {
     await runCommands(command, args);
     // handle `gen_srcs`:

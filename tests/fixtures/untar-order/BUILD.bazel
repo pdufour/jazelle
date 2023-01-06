@@ -1,0 +1,10 @@
+load("@jazelle//:build-rules.bzl", "jazelle")
+
+package(default_visibility = ["//visibility:public"])
+
+jazelle(name = "jazelle", manifest = "manifest.json")
+
+filegroup(
+  name = "yarn",
+  srcs = [".pnp.cjs", "package.json", "yarn.lock"],
+)
